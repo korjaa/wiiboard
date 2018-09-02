@@ -15,15 +15,15 @@ import collections
 import bluetooth
 
 # Wiiboard Parameters
-CONTINUOUS_REPORTING    = b'\x04'
-COMMAND_LIGHT           = b'\x11'
-COMMAND_REPORTING       = b'\x12'
-COMMAND_REQUEST_STATUS  = b'\x15'
-COMMAND_REGISTER        = b'\x16'
-COMMAND_READ_REGISTER   = b'\x17'
-INPUT_STATUS            = b'\x20'
-INPUT_READ_DATA         = b'\x21'
-EXTENSION_8BYTES        = b'\x32'
+CONTINUOUS_REPORTING    = 0x04
+COMMAND_LIGHT           = 0x11
+COMMAND_REPORTING       = 0x12
+COMMAND_REQUEST_STATUS  = 0x15
+COMMAND_REGISTER        = 0x16
+COMMAND_READ_REGISTER   = 0x17
+INPUT_STATUS            = 0x20
+INPUT_READ_DATA         = 0x21
+EXTENSION_8BYTES        = 0x32
 BUTTON_DOWN_MASK        = 0x08
 LED1_MASK               = 0x10
 BATTERY_MAX             = 200.0
@@ -44,7 +44,7 @@ handler.setFormatter(logging.Formatter('[%(asctime)s][%(name)s][%(levelname)s] %
 logger.addHandler(handler)
 logger.setLevel(logging.INFO) # or DEBUG
 
-b2i = lambda b: int(b.encode("hex"), 16)
+b2i = lambda b: int.from_bytes(b, "little")
 
 def discover(duration=6, prefix=BLUETOOTH_NAME):
     logger.info("Scan Bluetooth devices for %i seconds...", duration)
@@ -69,16 +69,23 @@ class Wiiboard:
         self.controlsocket.connect((address, 0x11))
         self.receivesocket.connect((address, 0x13))
         logger.debug("Sending mass calibration request")
-        self.send(COMMAND_READ_REGISTER, b"\x04\xA4\x00\x24\x00\x18")
+        self.send(COMMAND_READ_REGISTER, [0x04,0xA4,0x00,0x24,0x00,0x18])
         self.calibration_requested = True
         logger.info("Wait for calibration")
         logger.debug("Connect to the balance extension, to read mass data")
-        self.send(COMMAND_REGISTER, b"\x04\xA4\x00\x40\x00")
+        self.send(COMMAND_REGISTER, [0x04,0xA4,0x00,0x40,0x00])
         logger.debug("Request status")
         self.status()
         self.light(0)
     def send(self, *data):
-        self.controlsocket.send(b'\x52'+b''.join(data))
+        send_list = [0x52]
+        for x in data:
+            try:
+                send_list.extend(x)
+            except:
+                send_list.append(x)
+        send_list = bytes(send_list)
+        self.controlsocket.send(send_list)
     def reporting(self, mode=CONTINUOUS_REPORTING, extension=EXTENSION_8BYTES):
         self.send(COMMAND_REPORTING, mode, extension)
     def light(self, on_off=True):
@@ -123,15 +130,16 @@ class Wiiboard:
             if len(data) < 2:
                 continue
             input_type = data[1]
+            logger.debug(input_type)
             if input_type == INPUT_STATUS:
                 self.battery = b2i(data[7:9]) / BATTERY_MAX
                 # 0x12: on, 0x02: off/blink
-                self.light_state = b2i(data[4]) & LED1_MASK == LED1_MASK
+                self.light_state = data[4] & LED1_MASK == LED1_MASK
                 self.on_status()
             elif input_type == INPUT_READ_DATA:
                 logger.debug("Got calibration data")
                 if self.calibration_requested:
-                    length = b2i(data[4]) / 16 + 1
+                    length = int(data[4] / 16 + 1)
                     data = data[7:7 + length]
                     cal = lambda d: [b2i(d[j:j+2]) for j in [0, 2, 4, 6]]
                     if length == 16: # First packet of calibration data
