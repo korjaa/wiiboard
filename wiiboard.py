@@ -44,7 +44,7 @@ handler.setFormatter(logging.Formatter('[%(asctime)s][%(name)s][%(levelname)s] %
 logger.addHandler(handler)
 logger.setLevel(logging.INFO) # or DEBUG
 
-b2i = lambda b: int.from_bytes(b, "little")
+b2i = lambda b: int.from_bytes(b, "big")
 
 def discover(duration=6, prefix=BLUETOOTH_NAME):
     logger.info("Scan Bluetooth devices for %i seconds...", duration)
@@ -139,12 +139,14 @@ class Wiiboard:
             elif input_type == INPUT_READ_DATA:
                 logger.debug("Got calibration data")
                 if self.calibration_requested:
-                    length = int(data[4] / 16 + 1)
+                    length = int(data[4] / 16) + 1
                     data = data[7:7 + length]
                     cal = lambda d: [b2i(d[j:j+2]) for j in [0, 2, 4, 6]]
                     if length == 16: # First packet of calibration data
                         self.calibration = [cal(data[0:8]), cal(data[8:16]), [1e4]*4]
+                        logger.debug("First calibration packet")
                     elif length < 16: # Second packet of calibration data
+                        logger.debug("Second calibration packet")
                         self.calibration[2] = cal(data[0:8])
                         self.calibration_requested = False
                         self.on_calibrated()
