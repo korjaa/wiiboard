@@ -37,12 +37,7 @@ N_SAMPLES               = 200
 N_LOOP                  = 10
 T_SLEEP                 = 2
 
-# initialize the logger
-logger = logging.getLogger(__name__)
-handler = logging.StreamHandler() # or RotatingFileHandler
-handler.setFormatter(logging.Formatter('[%(asctime)s][%(name)s][%(levelname)s] %(message)s'))
-logger.addHandler(handler)
-logger.setLevel(logging.INFO) # or DEBUG
+logger = logging.getLogger("wiiboard")
 
 b2i = lambda b: int.from_bytes(b, "big")
 
@@ -54,6 +49,7 @@ def discover(duration=6, prefix=BLUETOOTH_NAME):
 
 class Wiiboard:
     def __init__(self, address=None):
+        print(f"info() {logger=}")
         self.controlsocket = bluetooth.BluetoothSocket(bluetooth.L2CAP)
         self.receivesocket = bluetooth.BluetoothSocket(bluetooth.L2CAP)
         self.calibration = [[1e4]*4]*3
@@ -210,7 +206,7 @@ class WiiboardPrint(WiiboardSampling):
 if __name__ == '__main__':
     import sys
     if '-d' in sys.argv:
-        logger.setLevel(logging.DEBUG)
+        logger.setLevel(logger.DEBUG)
         sys.argv.remove('-d')
     if len(sys.argv) > 1:
         address = sys.argv[1]
