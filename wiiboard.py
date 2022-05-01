@@ -47,6 +47,7 @@ def discover(duration=6, prefix=BLUETOOTH_NAME):
     logger.debug("Found devices: %s", str(devices))
     return [address for address, name in devices if name.startswith(prefix)]
 
+
 class Wiiboard:
     def __init__(self, address=None):
         print(f"info() {logger=}")
@@ -60,19 +61,25 @@ class Wiiboard:
         self.running = True
         if address is not None:
             self.connect(address)
+
     def connect(self, address):
         logger.info("Connecting to %s", address)
         self.controlsocket.connect((address, 0x11))
         self.receivesocket.connect((address, 0x13))
+
         logger.debug("Sending mass calibration request")
-        self.send(COMMAND_READ_REGISTER, [0x04,0xA4,0x00,0x24,0x00,0x18])
+        self.send(COMMAND_READ_REGISTER, [0x04, 0xA4, 0x00, 0x24, 0x00, 0x18])
         self.calibration_requested = True
+
         logger.info("Wait for calibration")
+
         logger.debug("Connect to the balance extension, to read mass data")
-        self.send(COMMAND_REGISTER, [0x04,0xA4,0x00,0x40,0x00])
+        self.send(COMMAND_REGISTER, [0x04, 0xA4, 0x00, 0x40, 0x00])
+
         logger.debug("Request status")
         self.status()
         self.light(0)
+
     def send(self, *data):
         send_list = [0x52]
         for x in data:
@@ -82,12 +89,16 @@ class Wiiboard:
                 send_list.append(x)
         send_list = bytes(send_list)
         self.controlsocket.send(send_list)
+
     def reporting(self, mode=CONTINUOUS_REPORTING, extension=EXTENSION_8BYTES):
         self.send(COMMAND_REPORTING, mode, extension)
+
     def light(self, on_off=True):
         self.send(COMMAND_LIGHT, b'\x10' if on_off else b'\x00')
+
     def status(self):
         self.send(COMMAND_REQUEST_STATUS, b'\x00')
+
     def calc_mass(self, raw, pos):
         # Calculates the Kilogram weight reading from raw data at position pos
         # calibration[0] is calibration values for 0kg
@@ -111,6 +122,7 @@ class Wiiboard:
         elif self.button_down:
             self.button_down = False
             self.on_released()
+
     def get_mass(self, data):
         return {
             'top_right':    self.calc_mass(b2i(data[0:2]), TOP_RIGHT),
@@ -118,6 +130,7 @@ class Wiiboard:
             'top_left':     self.calc_mass(b2i(data[4:6]), TOP_LEFT),
             'bottom_left':  self.calc_mass(b2i(data[6:8]), BOTTOM_LEFT),
         }
+
     def loop(self):
         logger.debug("Starting the receive loop")
         while self.running and self.receivesocket:
@@ -149,48 +162,62 @@ class Wiiboard:
             elif input_type == EXTENSION_8BYTES:
                 self.check_button(b2i(data[2:4]))
                 self.on_mass(self.get_mass(data[4:12]))
+
     def on_status(self):
         self.reporting() # Must set the reporting type after every status report
         logger.info("Status: battery: %.2f%% light: %s", self.battery*100.0,
                     'on' if self.light_state else 'off')
         self.light(1)
+
     def on_calibrated(self):
         logger.info("Board calibrated: %s", str(self.calibration))
         self.light(1)
+
     def on_mass(self, mass):
         logger.debug("New mass data: %s", str(mass))
+
     def on_pressed(self):
         logger.info("Button pressed")
+
     def on_released(self):
         logger.info("Button released")
+
     def close(self):
         self.running = False
         if self.receivesocket: self.receivesocket.close()
         if self.controlsocket: self.controlsocket.close()
+
     def __del__(self):
         self.close()
     #### with statement ####
+
     def __enter__(self):
         return self
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
         return not exc_type # re-raise exception if any
+
 
 class WiiboardSampling(Wiiboard):
     def __init__(self, address=None, nsamples=N_SAMPLES):
         Wiiboard.__init__(self, address)
         self.samples = collections.deque([], nsamples)
+
     def on_mass(self, mass):
         self.samples.append(mass)
         self.on_sample()
+
     def on_sample(self):
         time.sleep(0.01)
 
-# client class where we can re-define callbacks
+
 class WiiboardPrint(WiiboardSampling):
+    """ Client class where we can re-define callbacks."""
     def __init__(self, address=None, nsamples=N_SAMPLES):
         WiiboardSampling.__init__(self, address, nsamples)
         self.nloop = 0
+
     def on_sample(self):
         if len(self.samples) == N_SAMPLES:
             samples = [sum(sample.values()) for sample in self.samples]
@@ -205,9 +232,11 @@ class WiiboardPrint(WiiboardSampling):
 
 if __name__ == '__main__':
     import sys
+
     if '-d' in sys.argv:
         logger.setLevel(logger.DEBUG)
         sys.argv.remove('-d')
+
     if len(sys.argv) > 1:
         address = sys.argv[1]
     else:
@@ -216,5 +245,6 @@ if __name__ == '__main__':
         if not wiiboards:
             raise Exception("Press the red sync button on the board")
         address = wiiboards[0]
+
     with WiiboardPrint(address) as wiiprint:
         wiiprint.loop()
